@@ -16,8 +16,10 @@ libraryDependencies ++= Seq(
   "ch.qos.logback" % "logback-classic" % "1.2.3" % "runtime",
   "org.eclipse.jetty" % "jetty-webapp" % "9.4.8.v20171121" % "container",
   "javax.servlet" % "javax.servlet-api" % "3.1.0" % "provided",
-  "info.mukel" %% "telegrambot4s" % "3.0.14"
+  "info.mukel" %% "telegrambot4s" % "3.0.14",
+  "net.debasishg" %% "redisclient" % "3.5"
 )
+
 
 enablePlugins(SbtTwirl)
 enablePlugins(ScalatraPlugin)
