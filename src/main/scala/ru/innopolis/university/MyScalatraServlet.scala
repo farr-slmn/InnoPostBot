@@ -1,36 +1,31 @@
 package ru.innopolis.university
 
+import cats.effect.IO
+import doobie._
+import doobie.implicits._
 import info.mukel.telegrambot4s.api.declarative.{Action, ChannelPosts, Commands}
 import info.mukel.telegrambot4s.api.{Polling, Extractors => $, _}
-import info.mukel.telegrambot4s.models.{ChatId, Message, User}
 import info.mukel.telegrambot4s.methods.SendMessage
-
-import com.redis._
+import info.mukel.telegrambot4s.models.{ChatId, Message, User}
 import org.scalatra._
+
 import scala.collection._
+import scala.io.Source
 
 class MyScalatraServlet extends ScalatraServlet {
 
   //change Polling to Webhook and uncomment @port @webhookUrl after deployment
   object RandomBot extends TelegramBot with Polling with Commands with ChannelPosts {
-    def token = "TOKEN" //TODO change to function
+    lazy val token = scala.util.Properties
+      .envOrNone("BOT_TOKEN")
+      .getOrElse(Source.fromFile("bot.token").getLines().mkString)
 
-    private val redis = new RedisClient("localhost", 6379)
+    val xa = Transactor.fromDriverManager[IO](
+      "org.postgresql.Driver", "jdbc:postgresql:postgres", "postgres", ""
+    )
+    val y = xa.yolo
 
-    redis.del("Петров П")
-    /*
-      scala> import com.redis._
-      import com.redis._
-
-      scala> val r = new RedisClient("localhost", 6379)
-      r: com.redis.RedisClient = localhost:6379
-
-      scala> r.set("key", "some value")
-      res3: Boolean = true
-
-      scala> r.get("key")
-      res4: Option[String] = Some(some value)
-     */
+    import y._
 
     private val admins: mutable.Set[Int] = mutable.Set(212071762, 115879171)
     private var target_channel_id = ChatId(0)
@@ -57,8 +52,8 @@ class MyScalatraServlet extends ScalatraServlet {
       }
     }
 
-    onCommand("start")  { implicit msg => reply("send nudes" ) } //TODO Good start msg
-    onCommand("help")   { implicit msg => reply("send nudes") }  //TODO Good help message
+    onCommand("start") { implicit msg => reply("send nudes") } //TODO Good start msg
+    onCommand("help") { implicit msg => reply("send nudes") } //TODO Good help message
     onCommand("whoiam") { implicit msg => reply(msg.source.toString) }
 
     onCommand("setup") {
@@ -66,12 +61,11 @@ class MyScalatraServlet extends ScalatraServlet {
         withArgs {
           args =>
             if (args.isEmpty) {
-              reply("Invalid argumentヽ(ಠ_ಠ)ノ, use /setup Credential e.g. Петров П")
+              reply("Invalid argumentヽ(ಠ_ಠ)ノ, use /setup Credential e.g. Петров И")
             } else {
-              val username = args.mkString(" ")
+              val username = args.mkString(" ").toLowerCase
               val user_id = msg.source
-              //TODO Insert DB update here
-              redis.sadd(username, user_id.toString)
+              sql"insert into users (id, name) values ($user_id, $username)".update.run.transact(xa).unsafeRunSync
               logger.info("Setup Username: " + username + " User Id: " + user_id)
               reply("User name setup")
             }
@@ -96,16 +90,28 @@ class MyScalatraServlet extends ScalatraServlet {
 
     onChannelPost { implicit msg =>
       logger.info("Received message in channel: " + msg.text.orNull)
+
       //TODO Split post into names
       //TODO Search for names in db, get user_id
       //TODO Send Notification msg to user
-
-      redis.smembers("Петров П") match {
-        case Some(user_ids) => logger.info("Петров найден нахуй: " + user_ids.mkString(" "))
-        case None => logger.info("Петров не найден")
+      val nameRegex = "([А-Яа-я]+) ([А-Яа-я].)([А-Яа-я].)?,".r
+      var names = msg.text.getOrElse("false").split("\n").map(
+        line => line match {
+          case nameRegex(first, second, third) => logger.info("<" + first + "> <" + second + "> <" + third + ">")
+            ("name = '" + first + " " + second.charAt(0) + "'").toLowerCase
+          case _ => ()
+        }).filter(_ != ()).mkString(" or ") match {
+        case "" => "false";
+        case n => n
       }
-
-      request(SendMessage(ChatId(212071762), msg.text.orNull))
+      logger.info(names.toString())
+      var users = (sql"select id, name from users where " ++ Fragment.const(names)).query[(Long, String)].to[List].transact(xa).unsafeRunSync
+      logger.info(users.getClass.toString)
+      users.foreach((id : Long, name : String) => {
+        logger.info("User id: <" + id + "> for name: <" + name + ">")
+        request(SendMessage(ChatId(id), msg.text.orNull))
+        ()
+      })
     }
   }
 

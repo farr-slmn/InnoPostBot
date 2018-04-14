@@ -17,7 +17,9 @@ libraryDependencies ++= Seq(
   "org.eclipse.jetty" % "jetty-webapp" % "9.4.8.v20171121" % "container",
   "javax.servlet" % "javax.servlet-api" % "3.1.0" % "provided",
   "info.mukel" %% "telegrambot4s" % "3.0.14",
-  "net.debasishg" %% "redisclient" % "3.5"
+  "net.debasishg" %% "redisclient" % "3.5",
+  "org.tpolecat" %% "doobie-core" % "0.5.2",
+  "org.tpolecat" %% "doobie-postgres"  % "0.5.2"
 )
 
 
