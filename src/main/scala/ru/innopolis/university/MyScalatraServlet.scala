@@ -1,5 +1,7 @@
 package ru.innopolis.university
 
+import java.util.regex.Pattern
+
 import cats.effect.IO
 import doobie._
 import doobie.implicits._
@@ -90,28 +92,30 @@ class MyScalatraServlet extends ScalatraServlet {
 
     onChannelPost { implicit msg =>
       logger.info("Received message in channel: " + msg.text.orNull)
-
-      //TODO Split post into names
-      //TODO Search for names in db, get user_id
-      //TODO Send Notification msg to user
-      val nameRegex = "([А-Яа-я]+) ([А-Яа-я].)([А-Яа-я].)?,".r
-      var names = msg.text.getOrElse("false").split("\n").map(
-        line => line match {
-          case nameRegex(first, second, third) => logger.info("<" + first + "> <" + second + "> <" + third + ">")
-            ("name = '" + first + " " + second.charAt(0) + "'").toLowerCase
-          case _ => ()
-        }).filter(_ != ()).mkString(" or ") match {
-        case "" => "false";
-        case n => n
+      if (!msg.text.isEmpty) {
+        val text = msg.text.mkString
+        //TODO Split post into names
+        //TODO Search for names in db, get user_id
+        //TODO Send Notification msg to user
+        val nameRegex = "([А-Яа-я]+) ([А-Яа-я].)([А-Яа-я].)?,".r
+        val names = text.split("\n").map(
+          line => line match {
+            case nameRegex(first, second, third) => logger.info("<" + first + "> <" + second + "> <" + third + ">")
+              ("name = '" + first + " " + second.charAt(0) + "'").toLowerCase
+            case _ => ()
+          }).filter(_ != ()).mkString(" or ") match {
+          case "" => "false";
+          case n => n
+        }
+        logger.info(names.toString())
+        var users = (sql"select id, name from users where " ++ Fragment.const(names)).query[(Long, String)].to[List].transact(xa).unsafeRunSync
+        logger.info(users.getClass.toString)
+        users.foreach(user => {
+          val (id, name) = user
+          logger.info("User id: <" + id + "> for name: <" + name + ">")
+          request(SendMessage(ChatId(id), text.replaceAll(Pattern.quote("(?i("+name+".+))\n"), "**$0**")))
+        })
       }
-      logger.info(names.toString())
-      var users = (sql"select id, name from users where " ++ Fragment.const(names)).query[(Long, String)].to[List].transact(xa).unsafeRunSync
-      logger.info(users.getClass.toString)
-      users.foreach((id : Long, name : String) => {
-        logger.info("User id: <" + id + "> for name: <" + name + ">")
-        request(SendMessage(ChatId(id), msg.text.orNull))
-        ()
-      })
     }
   }
 
