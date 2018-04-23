@@ -23,7 +23,7 @@ class MyScalatraServlet extends ScalatraServlet {
       .getOrElse(Source.fromFile("bot.token").getLines().mkString)
 
     val xa = Transactor.fromDriverManager[IO](
-      "org.postgresql.Driver", "jdbc:postgresql:postgres", "postgres", ""
+      "org.postgresql.Driver", "jdbc:postgresql:postgres", "postgres", "scalaproject"
     )
     val y = xa.yolo
 
