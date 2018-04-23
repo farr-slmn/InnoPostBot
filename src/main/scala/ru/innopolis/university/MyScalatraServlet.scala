@@ -131,13 +131,14 @@ class MyScalatraServlet extends ScalatraServlet {
     }
 
     def findUserByNameWithDistance(name: String, distance: Long): Option[(Long, String)] = {
-      sql"SELECT id, name FROM users WHERE levenshtein(name, $name) <= $distance ORDER BY levenshtein(name, $name) LIMIT 1"
+      logger.info("Looking up user <" + name + ">")
+      val user = sql"SELECT id, name FROM users WHERE levenshtein(name, ${name}) <= 1 ORDER BY levenshtein(name, ${name}) LIMIT 1"
         .query[(Long, String)]
-        .to[List]
+        .option
         .transact(xa)
-        .unsafeRunSync()
-        .headOption
-
+        .unsafeRunSync
+      logger.info(user.toString())
+      user
     }
 
     def notifyUser(text: String, user: (Long, String)): Unit = {
