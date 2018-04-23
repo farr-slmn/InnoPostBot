@@ -54,8 +54,17 @@ class MyScalatraServlet extends ScalatraServlet {
       }
     }
 
-    onCommand("start") { implicit msg => reply("send nudes") } //TODO Good start msg
-    onCommand("help") { implicit msg => reply("send nudes") } //TODO Good help message
+    onCommand("start") { implicit msg => reply("Hello! Never wonder what's up with your parcel again and use our bot ^^\n Type /help for more info") } //TODO Good start msg
+    onCommand("help") { implicit msg => reply(
+      """
+        |/start - Start the work with the bot and display the greeting
+        |/help - Show this help message
+        |/setup Surname N. - Add "Surname N." to a list of names you follow
+        |
+        |Once you have set at least one name, you will start getting messages related to names you follow
+        |Once the notification containing any of names you follow is in the post channel, you are going to be notified here.
+        |This way, you will never miss the time you get a parcel.
+      """.stripMargin) } //TODO Good help message
     onCommand("whoiam") { implicit msg => reply(msg.source.toString) }
 
     onCommand("setup") {
