@@ -5,6 +5,9 @@ import java.util.regex.Pattern
 import cats.effect.IO
 import doobie._
 import doobie.implicits._
+import doobie.util.transactor.Transactor.Aux
+import doobie.util.yolo
+
 import info.mukel.telegrambot4s.api.declarative.{Action, ChannelPosts, Commands}
 import info.mukel.telegrambot4s.api.{Polling, Extractors => $, _}
 import info.mukel.telegrambot4s.methods.SendMessage
@@ -18,14 +21,14 @@ class MyScalatraServlet extends ScalatraServlet {
 
   //change Polling to Webhook and uncomment @port @webhookUrl after deployment
   object RandomBot extends TelegramBot with Polling with Commands with ChannelPosts {
-    lazy val token = scala.util.Properties
+    lazy val token: String = scala.util.Properties
       .envOrNone("BOT_TOKEN")
       .getOrElse(Source.fromFile("bot.token").getLines().mkString)
 
-    val xa = Transactor.fromDriverManager[IO](
+    val xa: Aux[IO, Unit] = Transactor.fromDriverManager[IO](
       "org.postgresql.Driver", "jdbc:postgresql:postgres", "postgres", ""
     )
-    val y = xa.yolo
+    val y: yolo.Yolo[IO] = xa.yolo
 
     import y._
 
@@ -92,30 +95,46 @@ class MyScalatraServlet extends ScalatraServlet {
 
     onChannelPost { implicit msg =>
       logger.info("Received message in channel: " + msg.text.orNull)
-      if (!msg.text.isEmpty) {
+      if (msg.text.isDefined) {
         val text = msg.text.mkString
         //TODO Split post into names
         //TODO Search for names in db, get user_id
         //TODO Send Notification msg to user
         val nameRegex = "([А-Яа-я]+) ([А-Яа-я].)([А-Яа-я].)?,".r
-        val names = text.split("\n").map(
-          line => line match {
-            case nameRegex(first, second, third) => logger.info("<" + first + "> <" + second + "> <" + third + ">")
-              ("name = '" + first + " " + second.charAt(0) + "'").toLowerCase
-            case _ => ()
-          }).filter(_ != ()).mkString(" or ") match {
-          case "" => "false";
-          case n => n
+
+        // get names
+        val names = text.split("\n").map {
+          case nameRegex(first, second, third) => logger.info("<" + first + "> <" + second + "> <" + third + ">")
+            Some(("'" + first + " " + second.charAt(0) + "'").toLowerCase)
+          case _ => None
         }
-        logger.info(names.toString())
-        var users = (sql"select id, name from users where " ++ Fragment.const(names)).query[(Long, String)].to[List].transact(xa).unsafeRunSync
-        logger.info(users.getClass.toString)
-        users.foreach(user => {
-          val (id, name) = user
-          logger.info("User id: <" + id + "> for name: <" + name + ">")
-          request(SendMessage(ChatId(id), text.replaceAll(Pattern.quote("(?i("+name+".+))\n"), "**$0**")))
-        })
+          .filter(_.isDefined)
+          .map(_.get)
+
+        for (name <- names) {
+          findUserByNameWithDistance(name, 1)
+            .foreach(user => {
+              logger.info("Found user with name <" + name + ">, actual name = <" + user._1  + ">, id = <" + user._2 + ">")
+              notifyUser(text, user)
+            })
+        }
       }
+    }
+
+    def findUserByNameWithDistance(name: String, distance: Long): Option[(Long, String)] = {
+      sql"SELECT id, name FROM users WHERE levenshtein(name, $name) <= $distance ORDER BY levenshtein(name, $name) LIMIT 1"
+        .query[(Long, String)]
+        .to[List]
+        .transact(xa)
+        .unsafeRunSync()
+        .headOption
+
+    }
+
+    def notifyUser(text: String, user: (Long, String)): Unit = {
+      val (id, name) = user
+      logger.info("Notifying user (id = <" + id + ">, name = <" + name + ">)")
+      request(SendMessage(ChatId(id), text.replaceAll(Pattern.quote("(?i("+name+".+))\n"), "**$0**")))
     }
   }
 
