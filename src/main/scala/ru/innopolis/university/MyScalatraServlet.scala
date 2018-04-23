@@ -59,7 +59,7 @@ class MyScalatraServlet extends ScalatraServlet {
       """
         |/start - Start the work with the bot and display the greeting
         |/help - Show this help message
-        |/setup Surname N. - Add "Surname N." to a list of names you follow
+        |/setup Surname N - Add "Surname N" to a list of names you follow
         |
         |Once you have set at least one name, you will start getting messages related to names you follow
         |Once the notification containing any of names you follow is in the post channel, you are going to be notified here.
