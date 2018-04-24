@@ -54,7 +54,14 @@ class MyScalatraServlet extends ScalatraServlet {
       }
     }
 
-    onCommand("start") { implicit msg => reply("Hello! Never wonder what's up with your parcel again and use our bot ^^\n Type /help for more info") } //TODO Good start msg
+    onCommand("start") { implicit msg => withArgs {
+      args => {
+        val user_id = msg.source
+        sql"insert into recepients (uid) values ($user_id)".update.run.transact(xa).unsafeRunSync
+        reply("Hello! Never wonder what's up with your parcel again and use our bot ^^\n Type /help for more info")
+      }}
+    }
+
     onCommand("help") { implicit msg => reply(
       """
         |/start - Start the work with the bot and display the greeting
@@ -64,21 +71,22 @@ class MyScalatraServlet extends ScalatraServlet {
         |Once you have set at least one name, you will start getting messages related to names you follow
         |Once the notification containing any of names you follow is in the post channel, you are going to be notified here.
         |This way, you will never miss the time you get a parcel.
-      """.stripMargin) } //TODO Good help message
+      """.stripMargin) }
     onCommand("whoiam") { implicit msg => reply(msg.source.toString) }
 
-    onCommand("setup") {
+    onCommand("add") {
       implicit msg =>
         withArgs {
           args =>
             if (args.isEmpty) {
               reply("Invalid argumentヽ(ಠ_ಠ)ノ, use /setup Credential e.g. Петров И")
             } else {
-              val username = args.mkString(" ").toLowerCase
+              val subname = args.mkString(" ").toLowerCase
               val user_id = msg.source
-              sql"insert into users (id, name) values ($user_id, $username)".update.run.transact(xa).unsafeRunSync
-              logger.info("Setup Username: " + username + " User Id: " + user_id)
-              reply("User name setup")
+              sql"insert into users (subname) values ($subname)".update.run.transact(xa).unsafeRunSync
+              sql"insert into subscriptions (uid, subid) values ($user_id, $subname)".update.run.transact(xa).unsafeRunSync
+              logger.info("User <" + subname + "> is followed\nUser Id: " + user_id)
+              reply("User name is added")
             }
         }
     }
@@ -101,23 +109,19 @@ class MyScalatraServlet extends ScalatraServlet {
 
     onChannelPost { implicit msg =>
       logger.info("Received message in channel: " + msg.text.orNull)
-      if (!msg.text.isEmpty) {
+      if (msg.text.isDefined) {
         val text = msg.text.mkString
-        //TODO Split post into names
-        //TODO Search for names in db, get user_id
-        //TODO Send Notification msg to user
         val nameRegex = "([А-Яа-я]+) ([А-Яа-я].)([А-Яа-я].)?,".r
-        val names = text.split("\n").map(
-          line => line match {
-            case nameRegex(first, second, third) => logger.info("<" + first + "> <" + second + "> <" + third + ">")
-              ("name = '" + first + " " + second.charAt(0) + "'").toLowerCase
-            case _ => ()
-          }).filter(_ != ()).mkString(" or ") match {
+        val names = text.split("\n").map{
+          case nameRegex(first, second, third) => logger.info("<" + first + "> <" + second + "> <" + third + ">")
+            ("name = '" + first + " " + second.charAt(0) + "'").toLowerCase
+          case _ => ()
+        }.filter(_ != ()).mkString(" or ") match {
           case "" => "false";
           case n => n
         }
-        logger.info(names.toString())
-        var users = (sql"select id, name from users where " ++ Fragment.const(names)).query[(Long, String)].to[List].transact(xa).unsafeRunSync
+        logger.info(names.toString)
+        var users = (sql"select id, subname from subsriptions where " ++ Fragment.const(names)).query[(Long, String)].to[List].transact(xa).unsafeRunSync
         logger.info(users.getClass.toString)
         users.foreach(user => {
           val (id, name) = user
